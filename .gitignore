@@ -1,0 +1,8 @@
+/config.php
+/public/uploads/*
+!/public/uploads/.htaccess
+!/public/uploads/.gitkeep
+/.phpunit.cache/
+/.idea/
+/.vscode/
+*.log
