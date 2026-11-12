@@ -11,4 +11,5 @@ return [
     ],
     'site_name' => 'Francisca Kwamboka Foundation',
     'base_path' => '',
+    'public_url' => getenv('FKF_PUBLIC_URL') ?: '',
 ];
