@@ -167,16 +167,11 @@ try {
         $db['password'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
     );
-    $schema = (string) file_get_contents($root . '/database/schema.sql');
-    $schema = preg_replace('/^CREATE DATABASE.*?;\s*USE\s+fkf_foundation;\s*/is', '', $schema) ?? $schema;
-    foreach (preg_split('/;\s*(?:\R|$)/', $schema) ?: [] as $statement) {
-        if (trim($statement) !== '') {
-            $pdo->exec($statement);
-        }
-    }
-    run_php($root . '/scripts/seed_content.php', $environment);
-    run_php($root . '/scripts/migrate_page_sections.php', $environment);
-    run_php($root . '/scripts/migrate_faqs.php', $environment);
+    run_php($root . '/scripts/migrate.php', $environment);
+    assertion((int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn() === 5, 'fresh database applies all versioned migrations');
+    assertion((int) $pdo->query("SELECT COUNT(*) FROM page_sections")->fetchColumn() > 0, 'initial migration seeds editable starter sections');
+    run_php($root . '/scripts/migrate.php', $environment);
+    assertion((int) $pdo->query('SELECT COUNT(*) FROM schema_migrations')->fetchColumn() === 5, 'repeated migration run skips applied migrations');
     $password = 'FunctionalTestPassword!2026';
     $insertUser = $pdo->prepare('INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)');
     $insertUser->execute(['Test Administrator', 'admin.test@example.invalid', password_hash($password, PASSWORD_DEFAULT), 'admin']);

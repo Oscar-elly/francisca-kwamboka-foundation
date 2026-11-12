@@ -1,21 +1,8 @@
 <?php
 declare(strict_types=1);
 
-$configPath = dirname(__DIR__) . '/config.php';
-if (!is_file($configPath)) {
-    fwrite(STDERR, "Copy config.example.php to config.php and configure the database first.\n");
-    exit(1);
-}
-
-$config = require $configPath;
-$db = $config['db'];
-$pdo = new PDO(
-    sprintf('mysql:host=%s;dbname=%s;charset=%s', $db['host'], $db['name'], $db['charset']),
-    $db['user'],
-    $db['password'],
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-);
-
+function seed_foundation_content(PDO $pdo): void
+{
 $pages = [
     [
         'Safe Spaces for women and children to thrive',
@@ -172,3 +159,22 @@ foreach ($settings as $key => $value) {
 }
 
 fwrite(STDOUT, count($pages) . " foundation pages imported or updated.\n");
+}
+
+if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
+    $configPath = dirname(__DIR__) . '/config.php';
+    if (!is_file($configPath)) {
+        fwrite(STDERR, "Copy config.example.php to config.php and configure the database first.\n");
+        exit(1);
+    }
+
+    $config = require $configPath;
+    $db = $config['db'];
+    $pdo = new PDO(
+        sprintf('mysql:host=%s;dbname=%s;charset=%s', $db['host'], $db['name'], $db['charset']),
+        $db['user'],
+        $db['password'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+    seed_foundation_content($pdo);
+}

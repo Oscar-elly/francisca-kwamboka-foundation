@@ -1,31 +1,8 @@
 <?php
 declare(strict_types=1);
 
-$configPath = dirname(__DIR__) . '/config.php';
-if (!is_file($configPath)) {
-    fwrite(STDERR, "Copy config.example.php to config.php and configure the database first.\n");
-    exit(1);
-}
-
-$config = require $configPath;
-$db = $config['db'];
-$pdo = new PDO(
-    sprintf('mysql:host=%s;dbname=%s;charset=%s', $db['host'], $db['name'], $db['charset']),
-    $db['user'],
-    $db['password'],
-    [
-        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES => false,
-    ]
-);
-$migration = file_get_contents(dirname(__DIR__) . '/database/migrations/001_page_sections.sql');
-if ($migration === false) {
-    fwrite(STDERR, "The page sections migration could not be read.\n");
-    exit(1);
-}
-$pdo->exec($migration);
-
+function seed_page_sections(PDO $pdo): void
+{
 $findPage = $pdo->prepare('SELECT id, body FROM pages WHERE slug = ? LIMIT 1');
 $countSections = $pdo->prepare('SELECT COUNT(*) FROM page_sections WHERE page_id = ?');
 $insertSection = $pdo->prepare(
@@ -114,22 +91,17 @@ $donationSections = [
     ['type' => 'rich_text', 'eyebrow' => 'Important information', 'title' => 'A note about giving', 'body' => 'The Foundation is currently unable to provide tax-deductible receipts. For help with your donation, please contact the Foundation.', 'image' => null, 'link_label' => null, 'link_url' => null, 'order' => 30],
 ];
 
-$pdo->beginTransaction();
-try {
-    $imported = [
-        'home' => $saveSections('home', $homeSections),
-        'fkf-board' => $saveSections('fkf-board', $boardSections),
-        'donate' => $saveSections('donate', $donationSections),
-    ];
-    $pdo->commit();
-} catch (Throwable $exception) {
-    if ($pdo->inTransaction()) {
-        $pdo->rollBack();
-    }
-    fwrite(STDERR, "Page sections could not be imported: " . $exception->getMessage() . "\n");
-    exit(1);
-}
+$imported = [
+    'home' => $saveSections('home', $homeSections),
+    'fkf-board' => $saveSections('fkf-board', $boardSections),
+    'donate' => $saveSections('donate', $donationSections),
+];
 
 foreach ($imported as $slug => $count) {
     fwrite(STDOUT, sprintf("%s: %s\n", $slug, $count > 0 ? "{$count} sections imported." : 'Already configured; left unchanged.'));
+}
+}
+
+if (realpath($_SERVER['SCRIPT_FILENAME'] ?? '') === __FILE__) {
+    require __DIR__ . '/migrate.php';
 }

@@ -1,0 +1,96 @@
+name: Deploy to cPanel
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: fkf-test-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pfkf-test-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, fileinfo, pdo_mysql
+          coverage: none
+
+      - name: Configure disposable test database
+        run: cp config.example.php config.php
+        env:
+          FKF_DB_HOST: 127.0.0.1
+          FKF_DB_NAME: fkf_foundation
+          FKF_DB_USER: root
+          FKF_DB_PASSWORD: fkf-test-password
+
+      - name: Run full-site tests
+        run: php tests/full_site_test.php
+        env:
+          FKF_DB_HOST: 127.0.0.1
+          FKF_DB_NAME: fkf_foundation
+          FKF_DB_USER: root
+          FKF_DB_PASSWORD: fkf-test-password
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out deployment script
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          CPANEL_SSH_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          CPANEL_KNOWN_HOSTS: ${{ vars.CPANEL_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          : "${CPANEL_SSH_KEY:?Set the CPANEL_SSH_KEY GitHub secret}"
+          : "${CPANEL_KNOWN_HOSTS:?Set the CPANEL_KNOWN_HOSTS GitHub variable}"
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$CPANEL_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$CPANEL_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Pull and deploy on cPanel
+        shell: bash
+        env:
+          CPANEL_HOST: ${{ vars.CPANEL_HOST }}
+          CPANEL_PORT: ${{ vars.CPANEL_PORT }}
+          CPANEL_USER: ${{ vars.CPANEL_USER }}
+          CPANEL_DEPLOY_PATH: ${{ vars.CPANEL_DEPLOY_PATH }}
+          CPANEL_PHP_CLI: ${{ vars.CPANEL_PHP_CLI }}
+        run: |
+          set -euo pipefail
+          : "${CPANEL_HOST:?Set the CPANEL_HOST GitHub variable}"
+          : "${CPANEL_USER:?Set the CPANEL_USER GitHub variable}"
+          : "${CPANEL_DEPLOY_PATH:?Set the CPANEL_DEPLOY_PATH GitHub variable}"
+          port="${CPANEL_PORT:-22}"
+          php_cli="${CPANEL_PHP_CLI:-php}"
+          remote_command="bash -s -- $(printf '%q' "$CPANEL_DEPLOY_PATH") $(printf '%q' "$php_cli")"
+          ssh -i "$HOME/.ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$port" \
+            "$CPANEL_USER@$CPANEL_HOST" \
+            "$remote_command" < scripts/deploy_cpanel.sh
